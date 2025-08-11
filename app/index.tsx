@@ -1,111 +1,159 @@
-import { View, Text, Button, Image, StyleSheet } from "react-native";
+import {
+    View, Text, StyleSheet, Pressable, Dimensions,
+} from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
-import { useState, useRef } from "react";
-import { detectDishWithClarifai, DetectionResult } from "./services/clarifai";
+import { useRef, useState, useCallback } from "react";
+import { useRouter, useFocusEffect } from "expo-router";
+
+import { detectDishWithClarifai, type DetectionResult } from "../services/clarifai";
+import { consumeCaloriesDelta, setDetections } from "../services/session";
 
 export default function HomeScreen() {
-    const [photoUri, setPhotoUri] = useState<string | null>(null);
+    const insets = useSafeAreaInsets();
+    const router = useRouter();
     const cameraRef = useRef<CameraView>(null);
-
-    // State to hold food detection results
-    const [detections, setDetections] = useState<DetectionResult[]>([]);
-
-    // Camera permission hook
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
     const [permission, requestPermission] = useCameraPermissions();
+    const [dailyCalories, setDailyCalories] = useState(0);
 
-    // Handle the three permission states
-    if (!permission) {
-        return (
-            <View style={styles.center}>
-                <Text>Requesting camera access…</Text>
-            </View>
-        );
-    }
-    if (!permission.granted) {
-        return (
-            <View style={styles.center}>
-                <Text>Camera permission denied.</Text>
-                <Button title="Grant permission" onPress={requestPermission} />
-            </View>
-        );
-    }
+    // when returning from Review, add the calories delta
+    useFocusEffect(
+        useCallback(() => {
+            const delta = consumeCaloriesDelta();
+            if (delta > 0) setDailyCalories((p) => p + Math.round(delta));
+        }, [])
+    );
 
-    // Take a photo, send base64 to Clarifai, and store the results
-    const takePhoto = async () => {
+    const openCamera = async () => {
+        if (!permission?.granted) {
+            const { granted } = await requestPermission();
+            if (!granted) return;
+        }
+        setIsCameraOpen(true);
+    };
+
+    const cancelCamera = () => setIsCameraOpen(false);
+
+    const capture = async () => {
         if (!cameraRef.current) return;
-
-        // Clear previous detections
-        setDetections([]);
-
-        // Capture with base64
-        const photo = await cameraRef.current.takePictureAsync({
-            quality: 0.8,
-            base64: true,
-        });
-        setPhotoUri(photo.uri);
-
-        // Send to Clarifai
-        try {
-            const results = await detectDishWithClarifai(photo.base64!);
-            setDetections(results);
-        } catch (error) {
-            console.error("Clarifai detection error:", error);
-        }
+        const photo = await cameraRef.current.takePictureAsync({ quality: 0.8, base64: true });
+        setIsCameraOpen(false);
+        await detectAndGo(photo.base64!);
     };
 
-    // Pick an image, send base64 to Clarifai, and store the results
     const pickImage = async () => {
-        // Clear previous detections
-        setDetections([]);
-
-        const result = await ImagePicker.launchImageLibraryAsync({
-            quality: 0.8,
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            base64: true,
-        });
-
-        if (!result.canceled && result.assets.length > 0) {
-            const asset = result.assets[0];
-            setPhotoUri(asset.uri);
-
-            try {
-                const results = await detectDishWithClarifai(asset.base64!);
-                setDetections(results);
-            } catch (error) {
-                console.error("Clarifai detection error:", error);
+        try {
+            const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (perm.status !== "granted") {
+                alert("Please allow Photos permission.");
+                return;
             }
+            const MediaEnum: any =
+                (ImagePicker as any).MediaType || (ImagePicker as any).MediaTypeOptions;
+
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: MediaEnum?.Images ?? ImagePicker.MediaTypeOptions.Images,
+                quality: 0.8,
+                base64: true,
+                selectionLimit: 1,
+            });
+            if (result.canceled) return;
+            const asset = (result as any).assets?.[0];
+            if (!asset?.base64) {
+                alert("Couldn’t read that image—pick another.");
+                return;
+            }
+            await detectAndGo(asset.base64);
+        } catch (e) {
+            console.error("pickImage error:", e);
+            alert("Could not open gallery.");
         }
     };
+
+    async function detectAndGo(base64: string) {
+        try {
+            const preds: DetectionResult[] = await detectDishWithClarifai(base64);
+            setDetections(preds);               // store for next screen
+            router.push("/select");            // go to selection modal
+        } catch (e) {
+            console.error("Clarifai error:", e);
+            alert("Couldn’t detect food in that photo.");
+        }
+    }
 
     return (
-        <View style={styles.container}>
-            <CameraView ref={cameraRef} style={styles.preview} />
-            <View style={styles.buttons}>
-                <Button title="Take Photo" onPress={takePhoto} />
-                <Button title="Pick From Gallery" onPress={pickImage} />
-            </View>
-            {photoUri && <Image source={{ uri: photoUri }} style={styles.preview} />}
+        <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+            <View style={styles.screen}>
+                {/* TOP: total calories */}
+                <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+                    <Text style={styles.caloriesNumber}>{dailyCalories}</Text>
+                    <Text style={styles.caloriesLabel}>cals</Text>
+                </View>
 
-            {detections.length > 0 && (
-              <View style={styles.detections}>
-                {detections
-                  .filter(d => d.confidence > 0.6)            // show 60 %+ only
-                  .map((d, i) => (
-                    <Text key={i}>
-                      {d.name} — {(d.confidence * 100).toFixed(0)}%
-                    </Text>
-                  ))}
-              </View>
-            )}
-        </View>
+                {/* MIDDLE is intentionally empty on Home now */}
+
+                {/* BOTTOM: actions */}
+                <View style={[styles.bottomActions, { paddingBottom: insets.bottom + 10 }]}>
+                    <Pressable onPress={openCamera} style={styles.outlineBtn}>
+                        <Text style={styles.outlineBtnText}>Take Photo</Text>
+                    </Pressable>
+
+                    <Pressable onPress={pickImage} style={styles.outlineBtn}>
+                        <Text style={styles.outlineBtnText}>Pick From Gallery</Text>
+                    </Pressable>
+                </View>
+
+                {/* Full-screen camera modal */}
+                {isCameraOpen && (
+                    <View style={styles.cameraModal}>
+                        <CameraView ref={cameraRef} style={styles.cameraFill} />
+                        <View style={styles.cameraControls}>
+                            <Pressable onPress={cancelCamera} style={styles.secondaryBtn}>
+                                <Text style={styles.secondaryBtnText}>Cancel</Text>
+                            </Pressable>
+                            <Pressable onPress={capture} style={styles.secondaryBtn}>
+                                <Text style={styles.secondaryBtnText}>Snap</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                )}
+            </View>
+        </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 16, justifyContent: "flex-start" },
-    preview: { width: "100%", height: 300, marginVertical: 16 },
-    buttons: { flexDirection: "row", justifyContent: "space-around" },
-    center: { flex: 1, alignItems: "center", justifyContent: "center" },
-    detections: { padding: 16, backgroundColor: "#f9f9f9" },
+    safe: { flex: 1, backgroundColor: "#f7f7f7" },
+    screen: { flex: 1 },
+
+    header: {
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: 16,
+        height: "45%",
+    },
+    caloriesNumber: { fontSize: 64, fontWeight: "800", color: "#111827" },
+    caloriesLabel: { fontSize: 18, color: "#6B7280", marginTop: -6 },
+
+    bottomActions: { paddingHorizontal: 16, gap: 10 },
+    outlineBtn: {
+        borderWidth: 2, borderColor: "#000", backgroundColor: "#fff",
+        borderRadius: 12, paddingVertical: 14, alignItems: "center",
+    },
+    outlineBtnText: { color: "#000", fontWeight: "700", fontSize: 16 },
+
+    cameraModal: {
+        ...StyleSheet.absoluteFillObject, backgroundColor: "#000", justifyContent: "flex-end",
+    },
+    cameraFill: { ...StyleSheet.absoluteFillObject },
+    cameraControls: {
+        padding: 16, backgroundColor: "rgba(0,0,0,0.5)",
+        flexDirection: "row", justifyContent: "space-between",
+    },
+    secondaryBtn: {
+        backgroundColor: "#FFFFFF", paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10,
+    },
+    secondaryBtnText: { color: "#111827", fontWeight: "700" },
 });
