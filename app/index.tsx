@@ -1,5 +1,5 @@
 import {
-    View, Text, StyleSheet, Pressable, Dimensions,
+    View, Text, StyleSheet, Pressable,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -25,6 +25,10 @@ export default function HomeScreen() {
             if (delta > 0) setDailyCalories((p) => p + Math.round(delta));
         }, [])
     );
+
+    const openSearch = () => {
+        router.push("/search");
+    };
 
     const openCamera = async () => {
         if (!permission?.granted) {
@@ -75,8 +79,8 @@ export default function HomeScreen() {
     async function detectAndGo(base64: string) {
         try {
             const preds: DetectionResult[] = await detectDishWithClarifai(base64);
-            setDetections(preds);               // store for next screen
-            router.push("/select");            // go to selection modal
+            setDetections(preds);        // store for next screen
+            router.push("/select");      // go to selection modal
         } catch (e) {
             console.error("Clarifai error:", e);
             alert("Couldn’t detect food in that photo.");
@@ -92,10 +96,15 @@ export default function HomeScreen() {
                     <Text style={styles.caloriesLabel}>cals</Text>
                 </View>
 
-                {/* MIDDLE is intentionally empty on Home now */}
+                {/* MIDDLE intentionally empty */}
 
-                {/* BOTTOM: actions */}
+                {/* BOTTOM: actions (stacked) */}
                 <View style={[styles.bottomActions, { paddingBottom: insets.bottom + 10 }]}>
+                    {/* NEW: Search comes first */}
+                    <Pressable onPress={openSearch} style={styles.outlineBtn}>
+                        <Text style={styles.outlineBtnText}>Search Food</Text>
+                    </Pressable>
+
                     <Pressable onPress={openCamera} style={styles.outlineBtn}>
                         <Text style={styles.outlineBtnText}>Take Photo</Text>
                     </Pressable>
@@ -139,21 +148,32 @@ const styles = StyleSheet.create({
 
     bottomActions: { paddingHorizontal: 16, gap: 10 },
     outlineBtn: {
-        borderWidth: 2, borderColor: "#000", backgroundColor: "#fff",
-        borderRadius: 12, paddingVertical: 14, alignItems: "center",
+        borderWidth: 2,
+        borderColor: "#000",
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        paddingVertical: 14,
+        alignItems: "center",
     },
     outlineBtnText: { color: "#000", fontWeight: "700", fontSize: 16 },
 
     cameraModal: {
-        ...StyleSheet.absoluteFillObject, backgroundColor: "#000", justifyContent: "flex-end",
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: "#000",
+        justifyContent: "flex-end",
     },
     cameraFill: { ...StyleSheet.absoluteFillObject },
     cameraControls: {
-        padding: 16, backgroundColor: "rgba(0,0,0,0.5)",
-        flexDirection: "row", justifyContent: "space-between",
+        padding: 16,
+        backgroundColor: "rgba(0,0,0,0.5)",
+        flexDirection: "row",
+        justifyContent: "space-between",
     },
     secondaryBtn: {
-        backgroundColor: "#FFFFFF", paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10,
+        backgroundColor: "#FFFFFF",
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: 10,
     },
     secondaryBtnText: { color: "#111827", fontWeight: "700" },
 });
