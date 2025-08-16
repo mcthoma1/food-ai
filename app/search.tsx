@@ -15,8 +15,7 @@ export default function SearchScreen() {
     const [results, setResults] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [selected, setSelected] = useState<Set<string>>(new Set());
-    const timer = useRef<NodeJS.Timeout | null>(null);
-
+    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     // Debounced search
     useEffect(() => {
         if (timer.current) clearTimeout(timer.current);

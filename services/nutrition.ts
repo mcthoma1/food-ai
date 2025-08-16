@@ -8,6 +8,11 @@ export interface NutritionFacts {
     fiber?: number;    // g
     sodium?: number;   // mg
     source?: string;   // description from FDC
+
+    // Optional serving metadata if FDC provides it
+    servingSize?: number;   // numeric value from FDC (e.g., 55)
+    servingUnit?: string;   // unit string (e.g., "g", "cup")
+    servingGrams?: number;  // grams per serving if unit is grams; else undefined
 }
 
 const FDC_BASE = "https://api.nal.usda.gov/fdc/v1";
@@ -44,6 +49,18 @@ export async function fetchNutritionForName(name: string): Promise<NutritionFact
         typeof n.nutrientName === "string" &&
         n.nutrientName.toLowerCase().includes(needle);
 
+    // Try to capture serving info if present on the search item
+    const rawServingSize =
+        typeof item?.servingSize === "number" ? item.servingSize : undefined;
+    const rawServingUnit =
+        typeof item?.servingSizeUnit === "string" ? item.servingSizeUnit : undefined;
+
+    let servingGrams: number | undefined = undefined;
+    // If the unit is grams, we can directly use it as grams-per-serving
+    if (rawServingSize && rawServingUnit && /(^g$|gram)/i.test(rawServingUnit)) {
+        servingGrams = rawServingSize;
+    }
+
     const facts: NutritionFacts = {
         calories: findVal(byName("energy")) ?? findVal(byName("calories")),
         protein:  findVal(byName("protein")),
@@ -53,6 +70,10 @@ export async function fetchNutritionForName(name: string): Promise<NutritionFact
         fiber:    findVal(byName("fiber")),
         sodium:   findVal(byName("sodium")),
         source:   item.description,
+
+        servingSize: rawServingSize,
+        servingUnit: rawServingUnit,
+        servingGrams,
     };
 
     return facts;
@@ -86,4 +107,48 @@ export async function searchFoods(query: string, pageSize = 15): Promise<string[
     const items: FdcSearchItem[] = Array.isArray(json.foods) ? json.foods : [];
     const names = items.map(i => i.description).filter(Boolean);
     return Array.from(new Set(names)); // dedupe
+}
+
+/** Scale a per-100g NutritionFacts object to the given gram amount. */
+export function scaleFacts(
+    base: NutritionFacts | null | undefined,
+    grams: number
+): NutritionFacts {
+    const f = base ?? {};
+    const g = Math.max(0, Number.isFinite(grams) ? Number(grams) : 0);
+    const ratio = g / 100;
+
+    const round1 = (v?: number) =>
+        v == null ? undefined : Math.round(v * ratio * 10) / 10; // one decimal for grams
+    const roundKcal = (v?: number) =>
+        v == null ? undefined : Math.round(v * ratio); // whole number for kcal
+
+    return {
+        calories: roundKcal(f.calories),
+        protein:  round1(f.protein),
+        fat:      round1(f.fat),
+        carbs:    round1(f.carbs),
+        sugars:   round1(f.sugars),
+        fiber:    round1(f.fiber),
+        sodium:   f.sodium == null ? undefined : Math.round(f.sodium * ratio), // mg
+        source:   f.source,
+
+        // keep any serving metadata intact
+        servingSize: f.servingSize,
+        servingUnit: f.servingUnit,
+        servingGrams: f.servingGrams,
+    };
+}
+
+/** Scale using servings. If grams per serving is unknown, default to 100 g per serving. */
+export function scaleByServings(
+    base: NutritionFacts | null | undefined,
+    servings: number
+): NutritionFacts {
+    const perServingGrams =
+        (base && typeof base.servingGrams === "number" && base.servingGrams > 0)
+            ? base.servingGrams
+            : 100; // sensible default
+    const gramsTotal = Math.max(0, Number.isFinite(servings) ? Number(servings) : 0) * perServingGrams;
+    return scaleFacts(base, gramsTotal);
 }

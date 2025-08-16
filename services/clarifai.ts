@@ -45,5 +45,5 @@ export async function detectDishWithClarifai(
 
     return concepts
         .map((c: any) => ({ name: c.name, confidence: c.value }))
-        .sort((a, b) => b.confidence - a.confidence);
+        .sort((a: DetectionResult, b: DetectionResult) => b.confidence - a.confidence);
 }

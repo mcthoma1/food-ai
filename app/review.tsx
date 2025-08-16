@@ -1,7 +1,8 @@
-import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { addEntry, type Entry } from "../services/storage";
 
 import {
     getSelectedNames,
@@ -9,7 +10,12 @@ import {
     setCaloriesDelta,
     clearSession,
 } from "../services/session";
-import { fetchNutritionForName, type NutritionFacts } from "../services/nutrition";
+import {
+    fetchNutritionForName,
+    scaleFacts,
+    scaleByServings,
+    type NutritionFacts,
+} from "../services/nutrition";
 
 export default function ReviewScreen() {
     const router = useRouter();
@@ -17,6 +23,11 @@ export default function ReviewScreen() {
     const names = useMemo(() => getSelectedNames(), []);
     const [nutrition, setNutrition] = useState<Record<string, NutritionFacts | null>>({});
     const [loading, setLoading] = useState(true);
+
+    // NEW: per-item input mode + values
+    const [mode, setMode] = useState<Record<string, "grams" | "servings">>({});
+    const [grams, setGrams] = useState<Record<string, string>>({});
+    const [servings, setServings] = useState<Record<string, string>>({});
     const fetched = useRef(false);
 
     // If came here directly, go Home
@@ -38,12 +49,18 @@ export default function ReviewScreen() {
                 setNutrition(map);            // local state → triggers UI
                 setSessionNutrition(map);     // keep session in sync
 
-                // compute calories for Home; store as delta to be applied when returning
-                const total = pairs.reduce((sum, [, facts]) => {
-                    const c = facts?.calories;
-                    return sum + (typeof c === "number" ? c : 0);
-                }, 0);
-                setCaloriesDelta(total);
+                // defaults for inputs
+                const gMap: Record<string, string> = {};
+                const mMap: Record<string, "grams" | "servings"> = {};
+                const sMap: Record<string, string> = {};
+                for (const n of names) {
+                    gMap[n] = "100";   // default 100 g
+                    mMap[n] = "grams"; // default mode
+                    sMap[n] = "1";     // default 1 serving
+                }
+                setGrams(gMap);
+                setMode(mMap);
+                setServings(sMap);
             } catch (e) {
                 console.error("Nutrition fetch failed:", e);
                 setNutrition({});
@@ -60,10 +77,53 @@ export default function ReviewScreen() {
         router.dismissAll(); // ✅ close all modals, reveal the original Home
     };
 
-    const onOK = () => {
-        // Calories were already stored via setCaloriesDelta(...) in useEffect.
-        // Just close all modals; Home's useFocusEffect will consume the delta.
-        router.dismissAll(); // ✅ no extra Home screen is pushed
+    const onOK = async () => {
+        try {
+            // Build items with scaled macros based on current mode + value
+            const items = Object.entries(nutrition).map(([name, base]) => {
+                const useServ = mode[name] === "servings";
+                const amount = useServ
+                    ? parseFloat(servings[name] || "0")
+                    : parseFloat(grams[name] || "0");
+
+                const scaled = useServ
+                    ? scaleByServings(base || {}, isNaN(amount) ? 0 : amount)
+                    : scaleFacts(base || {}, isNaN(amount) ? 0 : amount);
+
+                return {
+                    name,
+                    calories: scaled.calories ?? 0,
+                    protein:  scaled.protein,
+                    fat:      scaled.fat,
+                    carbs:    scaled.carbs,
+                    sugars:   scaled.sugars,
+                    fiber:    scaled.fiber,
+                    sodium:   scaled.sodium,
+                };
+            });
+
+            const total = Math.round(items.reduce((s, it) => s + (it.calories || 0), 0));
+
+            // Today in YYYY-MM-DD
+            const d = new Date();
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, "0");
+            const dd = String(d.getDate()).padStart(2, "0");
+
+            const entry: Entry = {
+                id: String(Date.now()),
+                date: `${yyyy}-${mm}-${dd}`,
+                items,
+                totalKcal: total,
+            };
+
+            await addEntry(entry);
+            setCaloriesDelta(total); // apply delta to Home immediately
+            router.dismissAll();
+        } catch (e) {
+            console.error("Save error:", e);
+            alert("Couldn’t save that entry.");
+        }
     };
 
     return (
@@ -79,19 +139,82 @@ export default function ReviewScreen() {
                     )}
 
                     {!loading &&
-                        Object.entries(nutrition).map(([name, facts]) => (
-                            <View key={name} style={styles.card}>
-                                <Text style={styles.cardTitle}>{name}</Text>
-                                <Text style={styles.line}>Calories: {facts?.calories ?? "—"} kcal</Text>
-                                <Text style={styles.line}>Protein: {facts?.protein ?? "—"} g</Text>
-                                <Text style={styles.line}>Fat: {facts?.fat ?? "—"} g</Text>
-                                <Text style={styles.line}>Carbs: {facts?.carbs ?? "—"} g</Text>
-                                <Text style={styles.line}>Sugars: {facts?.sugars ?? "—"} g</Text>
-                                <Text style={styles.line}>Fiber: {facts?.fiber ?? "—"} g</Text>
-                                <Text style={styles.line}>Sodium: {facts?.sodium ?? "—"} mg</Text>
-                                {facts?.source && <Text style={styles.source}>Source: {facts.source}</Text>}
-                            </View>
-                        ))}
+                        Object.entries(nutrition).map(([name, facts]) => {
+                            const useServ = mode[name] === "servings";
+                            const amount = useServ
+                                ? parseFloat(servings[name] || "0")
+                                : parseFloat(grams[name] || "0");
+                            const scaled = useServ
+                                ? scaleByServings(facts || {}, isNaN(amount) ? 0 : amount)
+                                : scaleFacts(facts || {}, isNaN(amount) ? 0 : amount);
+
+                            return (
+                                <View key={name} style={styles.card}>
+                                    <Text style={styles.cardTitle}>{name}</Text>
+
+                                    {/* Mode toggle */}
+                                    <View style={styles.toggleRow}>
+                                        <Pressable
+                                            onPress={() => setMode(prev => ({ ...prev, [name]: "grams" }))}
+                                            style={[styles.toggleBtn, mode[name] !== "grams" && styles.toggleOff]}
+                                        >
+                                            <Text style={[styles.toggleText, mode[name] !== "grams" && styles.toggleTextOff]}>Grams</Text>
+                                        </Pressable>
+                                        <Pressable
+                                            onPress={() => setMode(prev => ({ ...prev, [name]: "servings" }))}
+                                            style={[styles.toggleBtn, mode[name] !== "servings" && styles.toggleOff]}
+                                        >
+                                            <Text style={[styles.toggleText, mode[name] !== "servings" && styles.toggleTextOff]}>Servings</Text>
+                                        </Pressable>
+                                    </View>
+
+                                    {/* Conditionally render input row */}
+                                    {useServ ? (
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                                            <Text style={{ width: 64, color: "#374151" }}>Servings</Text>
+                                            <TextInput
+                                                value={servings[name] ?? ""}
+                                                onChangeText={(t) =>
+                                                    setServings(prev => ({ ...prev, [name]: t.replace(/[^0-9.]/g, "") }))
+                                                }
+                                                keyboardType="decimal-pad"
+                                                inputMode="decimal"
+                                                style={{ flex: 1, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff" }}
+                                                placeholder="1"
+                                            />
+                                            <Text style={styles.hintText}>
+                                                {facts?.servingGrams
+                                                    ? `(~${facts.servingGrams} g each)`
+                                                    : `(defaults to 100 g each)`}
+                                            </Text>
+                                        </View>
+                                    ) : (
+                                        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                                            <Text style={{ width: 64, color: "#374151" }}>Grams</Text>
+                                            <TextInput
+                                                value={grams[name] ?? ""}
+                                                onChangeText={(t) =>
+                                                    setGrams(prev => ({ ...prev, [name]: t.replace(/[^0-9.]/g, "") }))
+                                                }
+                                                keyboardType="decimal-pad"
+                                                inputMode="decimal"
+                                                style={{ flex: 1, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff" }}
+                                                placeholder="100"
+                                            />
+                                        </View>
+                                    )}
+
+                                    <Text style={styles.line}>Calories: {scaled.calories ?? 0} kcal</Text>
+                                    <Text style={styles.line}>Protein: {scaled.protein ?? 0} g</Text>
+                                    <Text style={styles.line}>Fat: {scaled.fat ?? 0} g</Text>
+                                    <Text style={styles.line}>Carbs: {scaled.carbs ?? 0} g</Text>
+                                    <Text style={styles.line}>Sugars: {scaled.sugars ?? 0} g</Text>
+                                    <Text style={styles.line}>Fiber: {scaled.fiber ?? 0} g</Text>
+                                    <Text style={styles.line}>Sodium: {scaled.sodium ?? 0} mg</Text>
+                                    {facts?.source && <Text style={styles.source}>Source: {facts.source}</Text>}
+                                </View>
+                            );
+                        })}
                 </ScrollView>
 
                 <View style={[styles.bottom, { paddingBottom: insets.bottom + 10 }]}>
@@ -111,6 +234,7 @@ const styles = StyleSheet.create({
     safe: { flex: 1, backgroundColor: "#f7f7f7" },
     container: { flex: 1 },
     title: { textAlign: "center", fontWeight: "700", fontSize: 18, marginBottom: 8 },
+
     card: {
         padding: 12, borderRadius: 10, backgroundColor: "#fff", borderWidth: 1,
         borderColor: "#E5E7EB", marginBottom: 12,
@@ -118,6 +242,38 @@ const styles = StyleSheet.create({
     cardTitle: { fontWeight: "700", marginBottom: 6 },
     line: { fontSize: 14, color: "#111827", marginBottom: 2 },
     source: { fontSize: 12, color: "#6B7280", marginTop: 4 },
+
+    // NEW toggle styles
+    toggleRow: {
+        flexDirection: "row",
+        gap: 8,
+        marginBottom: 8,
+    },
+    toggleBtn: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: "#4E70FF",
+        backgroundColor: "#EEF2FF",
+        borderRadius: 10,
+        paddingVertical: 8,
+        alignItems: "center",
+    },
+    toggleOff: {
+        borderColor: "#E5E7EB",
+        backgroundColor: "#fff",
+    },
+    toggleText: {
+        fontWeight: "700",
+        color: "#2131A8",
+    },
+    toggleTextOff: {
+        color: "#111827",
+        fontWeight: "600",
+    },
+    hintText: {
+        color: "#6B7280",
+    },
+
     bottom: { paddingHorizontal: 16, gap: 10 },
     secondaryBtn: {
         borderWidth: 2, borderColor: "#000", backgroundColor: "#fff",

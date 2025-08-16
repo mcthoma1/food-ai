@@ -9,6 +9,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 
 import { detectDishWithClarifai, type DetectionResult } from "../services/clarifai";
 import { consumeCaloriesDelta, setDetections } from "../services/session";
+import { getTodayTotal } from "../services/storage";
 
 export default function HomeScreen() {
     const insets = useSafeAreaInsets();
@@ -21,8 +22,15 @@ export default function HomeScreen() {
     // when returning from Review, add the calories delta
     useFocusEffect(
         useCallback(() => {
-            const delta = consumeCaloriesDelta();
-            if (delta > 0) setDailyCalories((p) => p + Math.round(delta));
+            (async () => {
+                const d = new Date();
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, "0");
+                const dd = String(d.getDate()).padStart(2, "0");
+                const base = await getTodayTotal(`${yyyy}-${mm}-${dd}`);
+                const delta = consumeCaloriesDelta(); // usually 0 since we saved before closing
+                setDailyCalories(Math.round(base + delta));
+            })();
         }, [])
     );
 
@@ -111,6 +119,9 @@ export default function HomeScreen() {
 
                     <Pressable onPress={pickImage} style={styles.outlineBtn}>
                         <Text style={styles.outlineBtnText}>Pick From Gallery</Text>
+                    </Pressable>
+                    <Pressable onPress={() => router.push("./history")} style={styles.outlineBtn}>
+                        <Text style={styles.outlineBtnText}>History</Text>
                     </Pressable>
                 </View>
 
