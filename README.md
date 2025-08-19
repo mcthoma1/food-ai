@@ -1,50 +1,123 @@
-# Welcome to your Expo app 👋
+# Food Calorie AI Estimator (WIP)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+> Capture or search foods, review serving sizes, and track calories & macros — built with Expo (React Native).  
+> **Project status:** early-stage scaffold; core features are under active development.
 
-## Get started
+## Table of Contents
+- [Overview](#overview)
+- [Current Status (What Works Today)](#current-status-what-works-today)
+- [Planned Features / Roadmap](#planned-features--roadmap)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Scripts](#scripts)
+- [Quality & Performance Goals](#quality--performance-goals)
+- [Contributing](#contributing)
+- [License](#license)
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## Overview
+This repository hosts a mobile app aiming to make calorie tracking **fast and simple**. Users will be able to add foods either by **taking a photo** or by **searching a nutrition database**, confirm serving sizes, and save entries to a daily log.
 
-2. Start the app
+The long‑term vision:
+- **Photo → food detection** (choose matches), then
+- **Nutrition lookup** (confirm item & serving),
+- **Daily totals & history** stored locally,
+- Clean, accessible UI with quick interactions.
 
-   ```bash
-   npx expo start
-   ```
+> To stay transparent: the codebase is currently an Expo application scaffold. The end‑to‑end food recognition and nutrition flows are in progress and not yet available in-app.
 
-In the output, you'll find options to open the app in a
+## Current Status (What Works Today)
+- ✅ **Expo app scaffold** created with `create-expo-app`.
+- ✅ **Hot reload** development workflow via `npx expo start`.
+- ✅ **File‑based routing** using **Expo Router** (default app directory).
+- ✅ Runs in:
+    - Expo Go on a device,
+    - iOS Simulator,
+    - Android Emulator.
+- ℹ️ No production features (camera, model calls, or nutrition APIs) have been shipped yet in this repo.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Planned Features / Roadmap
+The following are planned and will be implemented incrementally. Items are listed to communicate intent; they are **not** available yet unless marked.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- **Core add‑food flows**
+    - [ ] Photo → multi‑select **food predictions** (Clarifai Food workflow)
+    - [ ] Text search → **USDA FoodData Central** results
+    - [ ] **Serving size review** (grams/units; live macro math)
+    - [ ] **Save entries** to local history (AsyncStorage)
 
-## Get a fresh project
+- **UX & App polish**
+    - [ ] History filters (day/week) and quick edit
+    - [ ] Error/retry states and empty screens
+    - [ ] Accessibility pass (TalkBack/VoiceOver, touch targets)
+    - [ ] App icon, splash screen, and unified theme
+    - [ ] Dark mode
 
-When you're ready, run:
+- **Quality & Observability**
+    - [ ] Unit tests for nutrition parsing and portion math (Jest + RTL)
+    - [ ] Basic analytics events (session timing, add‑food funnel)
+    - [ ] Crash reporting (e.g., Sentry) with source maps
 
-```bash
-npm run reset-project
+- **Performance**
+    - [ ] Cold start P50 ≤ 2.0s / P95 ≤ 4.0s
+    - [ ] Photo→save flow P50 ≤ 6.0s / P95 ≤ 10.0s
+
+- **Nice‑to‑haves (later)**
+    - [ ] Offline caching of recent items
+    - [ ] Recent foods & favorites
+    - [ ] Barcode quick add
+    - [ ] Localization scaffolding (i18n)
+
+## Tech Stack
+- **App:** Expo (React Native)
+- **Routing:** Expo Router (file‑based)
+- **Language:** JavaScript (TypeScript migration planned)
+- **Storage:** AsyncStorage (planned)
+- **External services (planned):** Clarifai (food recognition), USDA FDC (nutrition)
+
+## Project Structure
+> Default Expo Router layout; will evolve with features.
+
+```
+/app
+  (routes live here; e.g., /, /history, /settings as features land)
+assets/
+README.md
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Getting Started
 
-## Learn more
+1) **Install dependencies**
+```bash
+npm install
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+2) **Run the app**
+```bash
+npx expo start
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+In the CLI, open on:
+- **Expo Go** (QR code),
+- **Android emulator**,
+- **iOS simulator**.
 
-## Join the community
+## Scripts
+```bash
+npm run dev      # alias for `expo start` (add if desired)
+npm run lint     # add ESLint and this script when ready
+npm test         # add Jest + RTL and this script when tests are added
+```
 
-Join our community of developers creating universal apps.
+## Quality & Performance Goals
+- Ship small, reviewable PRs with screenshots/GIFs for UI changes.
+- Maintain fast interactions; avoid jank during photo or search flows.
+- Add automated tests as the domain logic (portion math, parsing) lands.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Contributing
+Contributions are welcome once the core scaffolding stabilizes.  
+Please keep changes focused and include context in PR descriptions.
+
+## License
+TBD. Choose a license (MIT is common for open‑source); until then, all rights reserved.
