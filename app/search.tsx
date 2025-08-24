@@ -5,7 +5,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useRouter } from "expo-router";
 
 import { searchFoods } from "../services/nutrition";
-import { setSelectedNames, clearSession } from "../services/session";
+import { setSelectedNames, clearSession, markConfirmStart } from "../services/session";
 
 export default function SearchScreen() {
     const insets = useSafeAreaInsets();
@@ -58,6 +58,7 @@ export default function SearchScreen() {
             return;
         }
         setSelectedNames(Array.from(selected)); // reuse Review screen flow
+        markConfirmStart();
         router.push("/review");
     };
 

@@ -44,6 +44,18 @@ export function consumeCaloriesDelta(): number {
     return v;
 }
 
+// timing between confirm on Select/Search and nutrition ready on Review
+let _confirmStart = 0;
+export function markConfirmStart() {
+  _confirmStart = Date.now();
+}
+export function consumeConfirmDuration(): number {
+  if (!_confirmStart) return 0;
+  const ms = Date.now() - _confirmStart;
+  _confirmStart = 0;
+  return ms;
+}
+
 // abort everything
 export function clearSession() {
     _detections = [];

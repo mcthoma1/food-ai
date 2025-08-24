@@ -1,9 +1,34 @@
-import { Stack } from "expo-router";
+import { Stack, useNavigationContainerRef } from "expo-router";
 import { useEffect } from "react";
 import { clearSession } from "../services/session";
 import { clearAllEntries } from "../services/storage";
+import { isRunningInExpoGo } from "expo";
+import * as Sentry from "@sentry/react-native";
+import { initAnalytics } from "./services/analytics";
 
-export default function RootLayout() {
+const navigationIntegration = Sentry.reactNavigationIntegration({
+  enableTimeToInitialDisplay: !isRunningInExpoGo(),
+});
+
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? "",
+  tracesSampleRate: 1.0,
+  integrations: [navigationIntegration],
+  enableNativeFramesTracking: !isRunningInExpoGo(),
+});
+
+function RootLayout() {
+  const navRef = useNavigationContainerRef();
+
+  useEffect(() => {
+    navigationIntegration.registerNavigationContainer(navRef);
+  }, [navRef]);
+
+  // Initialize analytics once (no-op if key not set)
+  useEffect(() => {
+    initAnalytics();
+  }, []);
+
   useEffect(() => {
     // Always clear transient wizard/session data at app boot
     clearSession();
@@ -23,7 +48,7 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack screenOptions={{ headerShown: false }} ref={navRef}>
       <Stack.Screen name="index" />
       <Stack.Screen name="select" options={{ presentation: "modal" }} />
       <Stack.Screen name="review" options={{ presentation: "modal" }} />
@@ -32,3 +57,5 @@ export default function RootLayout() {
     </Stack>
   );
 }
+
+export default Sentry.wrap(RootLayout);

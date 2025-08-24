@@ -1,3 +1,4 @@
+import { track, timeSince } from "./services/analytics";
 import {
     View, Text, StyleSheet, Pressable,
 } from "react-native";
@@ -10,6 +11,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { detectDishWithClarifai, type DetectionResult } from "../services/clarifai";
 import { consumeCaloriesDelta, setDetections } from "../services/session";
 import { getTodayTotal } from "../services/storage";
+import * as Sentry from "@sentry/react-native";
 
 export default function HomeScreen() {
     const insets = useSafeAreaInsets();
@@ -22,6 +24,7 @@ export default function HomeScreen() {
     // when returning from Review, add the calories delta
     useFocusEffect(
         useCallback(() => {
+            track("home_view");
             (async () => {
                 const d = new Date();
                 const yyyy = d.getFullYear();
@@ -35,6 +38,7 @@ export default function HomeScreen() {
     );
 
     const openSearch = () => {
+        track("add_search_tap");
         router.push("/search");
     };
 
@@ -43,6 +47,7 @@ export default function HomeScreen() {
             const { granted } = await requestPermission();
             if (!granted) return;
         }
+        track("add_photo_tap");
         setIsCameraOpen(true);
     };
 
@@ -57,6 +62,7 @@ export default function HomeScreen() {
 
     const pickImage = async () => {
         try {
+            track("add_gallery_tap");
             const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
             if (perm.status !== "granted") {
                 alert("Please allow Photos permission.");
@@ -86,7 +92,10 @@ export default function HomeScreen() {
 
     async function detectAndGo(base64: string) {
         try {
+            const stop = timeSince("image_to_predictions");
             const preds: DetectionResult[] = await detectDishWithClarifai(base64);
+            const avg = preds.length ? preds.reduce((s, p) => s + p.confidence, 0) / preds.length : 0;
+            stop({ top_k: preds.length, avg_confidence: Number((avg * 100).toFixed(1)) });
             setDetections(preds);        // store for next screen
             router.push("/select");      // go to selection modal
         } catch (e) {
@@ -122,6 +131,12 @@ export default function HomeScreen() {
                     </Pressable>
                     <Pressable onPress={() => router.push("./history")} style={styles.outlineBtn}>
                         <Text style={styles.outlineBtnText}>History</Text>
+                    </Pressable>
+                    <Pressable
+                        onPress={() => Sentry.captureException(new Error("Sentry test error"))}
+                        style={styles.outlineBtn}
+                    >
+                        <Text style={styles.outlineBtnText}>Send Sentry Test</Text>
                     </Pressable>
                 </View>
 

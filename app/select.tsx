@@ -1,9 +1,10 @@
 import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { track } from "./services/analytics";
 
-import { getDetections, setSelectedNames, clearSession } from "../services/session";
+import { getDetections, setSelectedNames, clearSession, markConfirmStart } from "../services/session";
 import type { DetectionResult } from "../services/clarifai";
 
 export default function SelectScreen() {
@@ -11,6 +12,12 @@ export default function SelectScreen() {
     const insets = useSafeAreaInsets();
     const detections: DetectionResult[] = useMemo(() => getDetections(), []);
     const [selected, setSelected] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        const shown = detections.filter((d) => d.confidence > 0.6);
+        const avg = shown.length ? shown.reduce((s, d) => s + d.confidence, 0) / shown.length : 0;
+        track("predictions_view", { top_k: shown.length, avg_confidence: Number((avg * 100).toFixed(1)) });
+    }, []);
 
     // If user landed here without data, go Home
     if (!detections || detections.length === 0) {
@@ -40,8 +47,9 @@ export default function SelectScreen() {
             alert("Select at least one item.");
             return;
         }
-
+        track("prediction_select", { selected_count: names.length });
         setSelectedNames(names);
+        markConfirmStart();
         router.push("/review");
     };
 

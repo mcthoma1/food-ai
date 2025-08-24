@@ -1,3 +1,4 @@
+import { track } from "./services/analytics";
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -9,6 +10,7 @@ import {
     setNutrition as setSessionNutrition,
     setCaloriesDelta,
     clearSession,
+    consumeConfirmDuration,
 } from "../services/session";
 import {
     fetchNutritionForName,
@@ -37,6 +39,7 @@ export default function ReviewScreen() {
     }
 
     useEffect(() => {
+        track("review_view");
         if (fetched.current) return;
         fetched.current = true;
 
@@ -61,6 +64,12 @@ export default function ReviewScreen() {
                 setGrams(gMap);
                 setMode(mMap);
                 setServings(sMap);
+
+                // emit confirm→macros timing once initial nutrition is ready
+                const ms = consumeConfirmDuration();
+                if (ms > 0) {
+                  track("timing_confirm_to_macros_ms", { ms, items: names.length });
+                }
             } catch (e) {
                 console.error("Nutrition fetch failed:", e);
                 setNutrition({});
@@ -117,6 +126,7 @@ export default function ReviewScreen() {
                 totalKcal: total,
             };
 
+            track("review_save", { items: items.length, total_kcal: total });
             await addEntry(entry);
             setCaloriesDelta(total); // apply delta to Home immediately
             router.dismissAll();

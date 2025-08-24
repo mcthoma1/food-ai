@@ -1,3 +1,4 @@
+import { track } from "./services/analytics";
 import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, FlatList } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,6 +10,10 @@ export default function HistoryScreen() {
 
     useEffect(() => {
         (async () => setEntries(await getEntries()))();
+    }, []);
+
+    useEffect(() => {
+        track("history_view");
     }, []);
 
     return (

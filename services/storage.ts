@@ -12,7 +12,6 @@ export type EntryItem = {
     fiber?: number;
     sodium?: number;
 };
-
 export type Entry = {
     id: string;        // unique id for this log (Date.now() is fine)
     date: string;      // YYYY-MM-DD
