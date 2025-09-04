@@ -37,13 +37,16 @@ export default function ReviewScreen() {
     const [servings, setServings] = useState<Record<string, string>>({});
     const fetched = useRef(false);
 
-    if (!names || names.length === 0) {
-        router.replace("/");
-        return null;
-    }
-
+    // Always call hooks; redirect inside the effect if no names
     useEffect(() => {
         track("review_view");
+
+        // If someone lands here directly, redirect home (don’t conditionally call hooks)
+        if (!names || names.length === 0) {
+            router.replace("/");
+            return;
+        }
+
         if (fetched.current) return;
         fetched.current = true;
 
@@ -81,7 +84,7 @@ export default function ReviewScreen() {
                 setLoading(false);
             }
         })();
-    }, [names]);
+    }, [names, router]);
 
     const onCancel = () => {
         clearSession();
@@ -135,6 +138,11 @@ export default function ReviewScreen() {
             alert("Couldn’t save that entry.");
         }
     };
+
+    // After hooks: render an empty safe view while the effect redirects
+    if (!names || names.length === 0) {
+        return <SafeAreaView style={styles.safe} />;
+    }
 
     return (
         <SafeAreaView style={styles.safe}>
@@ -205,7 +213,7 @@ export default function ReviewScreen() {
                                                     setServings((prev) => ({ ...prev, [name]: t.replace(/[^0-9.]/g, "") }))
                                                 }
                                                 keyboardType="decimal-pad"
-                                                // inputMode removed for better Node/Web test stability
+                                                inputMode="decimal"
                                                 style={{ flex: 1, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff" }}
                                                 placeholder="1"
                                                 testID={`servings-input-${id}`}
@@ -225,7 +233,7 @@ export default function ReviewScreen() {
                                                     setGrams((prev) => ({ ...prev, [name]: t.replace(/[^0-9.]/g, "") }))
                                                 }
                                                 keyboardType="decimal-pad"
-                                                // inputMode removed for better Node/Web test stability
+                                                inputMode="decimal"
                                                 style={{ flex: 1, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff" }}
                                                 placeholder="100"
                                                 testID={`grams-input-${id}`}
@@ -233,16 +241,15 @@ export default function ReviewScreen() {
                                         </View>
                                     )}
 
-                                    {/* Make the whole line a single string so tests can match consistently */}
                                     <Text style={styles.line} testID={`calories-${id}`}>
-                                        {`Calories: ${scaled.calories ?? 0} kcal`}
+                                        Calories: {scaled.calories ?? 0} kcal
                                     </Text>
-                                    <Text style={styles.line}>{`Protein: ${scaled.protein ?? 0} g`}</Text>
-                                    <Text style={styles.line}>{`Fat: ${scaled.fat ?? 0} g`}</Text>
-                                    <Text style={styles.line}>{`Carbs: ${scaled.carbs ?? 0} g`}</Text>
-                                    <Text style={styles.line}>{`Sugars: ${scaled.sugars ?? 0} g`}</Text>
-                                    <Text style={styles.line}>{`Fiber: ${scaled.fiber ?? 0} g`}</Text>
-                                    <Text style={styles.line}>{`Sodium: ${scaled.sodium ?? 0} mg`}</Text>
+                                    <Text style={styles.line}>Protein: {scaled.protein ?? 0} g</Text>
+                                    <Text style={styles.line}>Fat: {scaled.fat ?? 0} g</Text>
+                                    <Text style={styles.line}>Carbs: {scaled.carbs ?? 0} g</Text>
+                                    <Text style={styles.line}>Sugars: {scaled.sugars ?? 0} g</Text>
+                                    <Text style={styles.line}>Fiber: {scaled.fiber ?? 0} g</Text>
+                                    <Text style={styles.line}>Sodium: {scaled.sodium ?? 0} mg</Text>
                                     {facts?.source && <Text style={styles.source}>Source: {facts.source}</Text>}
                                 </View>
                             );
