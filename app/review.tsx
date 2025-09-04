@@ -1,3 +1,4 @@
+// app/review.tsx
 import { track } from "./services/analytics";
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,6 +20,10 @@ import {
     type NutritionFacts,
 } from "../services/nutrition";
 
+function slugify(name: string) {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
 export default function ReviewScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
@@ -26,13 +31,12 @@ export default function ReviewScreen() {
     const [nutrition, setNutrition] = useState<Record<string, NutritionFacts | null>>({});
     const [loading, setLoading] = useState(true);
 
-    // NEW: per-item input mode + values
+    // per-item input mode + values
     const [mode, setMode] = useState<Record<string, "grams" | "servings">>({});
     const [grams, setGrams] = useState<Record<string, string>>({});
     const [servings, setServings] = useState<Record<string, string>>({});
     const fetched = useRef(false);
 
-    // If came here directly, go Home
     if (!names || names.length === 0) {
         router.replace("/");
         return null;
@@ -65,10 +69,9 @@ export default function ReviewScreen() {
                 setMode(mMap);
                 setServings(sMap);
 
-                // emit confirm→macros timing once initial nutrition is ready
                 const ms = consumeConfirmDuration();
                 if (ms > 0) {
-                  track("timing_confirm_to_macros_ms", { ms, items: names.length });
+                    track("timing_confirm_to_macros_ms", { ms, items: names.length });
                 }
             } catch (e) {
                 console.error("Nutrition fetch failed:", e);
@@ -81,14 +84,12 @@ export default function ReviewScreen() {
     }, [names]);
 
     const onCancel = () => {
-        // do not add calories; drop session and go home
         clearSession();
-        router.dismissAll(); // ✅ close all modals, reveal the original Home
+        router.dismissAll();
     };
 
     const onOK = async () => {
         try {
-            // Build items with scaled macros based on current mode + value
             const items = Object.entries(nutrition).map(([name, base]) => {
                 const useServ = mode[name] === "servings";
                 const amount = useServ
@@ -113,7 +114,6 @@ export default function ReviewScreen() {
 
             const total = Math.round(items.reduce((s, it) => s + (it.calories || 0), 0));
 
-            // Today in YYYY-MM-DD
             const d = new Date();
             const yyyy = d.getFullYear();
             const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -128,7 +128,7 @@ export default function ReviewScreen() {
 
             track("review_save", { items: items.length, total_kcal: total });
             await addEntry(entry);
-            setCaloriesDelta(total); // apply delta to Home immediately
+            setCaloriesDelta(total);
             router.dismissAll();
         } catch (e) {
             console.error("Save error:", e);
@@ -150,6 +150,7 @@ export default function ReviewScreen() {
 
                     {!loading &&
                         Object.entries(nutrition).map(([name, facts]) => {
+                            const id = slugify(name);
                             const useServ = mode[name] === "servings";
                             const amount = useServ
                                 ? parseFloat(servings[name] || "0")
@@ -159,38 +160,55 @@ export default function ReviewScreen() {
                                 : scaleFacts(facts || {}, isNaN(amount) ? 0 : amount);
 
                             return (
-                                <View key={name} style={styles.card}>
+                                <View key={name} style={styles.card} testID={`food-card-${id}`}>
                                     <Text style={styles.cardTitle}>{name}</Text>
 
                                     {/* Mode toggle */}
                                     <View style={styles.toggleRow}>
                                         <Pressable
-                                            onPress={() => setMode(prev => ({ ...prev, [name]: "grams" }))}
+                                            onPress={() => setMode((prev) => ({ ...prev, [name]: "grams" }))}
                                             style={[styles.toggleBtn, mode[name] !== "grams" && styles.toggleOff]}
+                                            testID={`toggle-grams-${id}`}
                                         >
-                                            <Text style={[styles.toggleText, mode[name] !== "grams" && styles.toggleTextOff]}>Grams</Text>
+                                            <Text
+                                                style={[
+                                                    styles.toggleText,
+                                                    mode[name] !== "grams" && styles.toggleTextOff,
+                                                ]}
+                                            >
+                                                Grams
+                                            </Text>
                                         </Pressable>
                                         <Pressable
-                                            onPress={() => setMode(prev => ({ ...prev, [name]: "servings" }))}
+                                            onPress={() => setMode((prev) => ({ ...prev, [name]: "servings" }))}
                                             style={[styles.toggleBtn, mode[name] !== "servings" && styles.toggleOff]}
+                                            testID={`toggle-servings-${id}`}
                                         >
-                                            <Text style={[styles.toggleText, mode[name] !== "servings" && styles.toggleTextOff]}>Servings</Text>
+                                            <Text
+                                                style={[
+                                                    styles.toggleText,
+                                                    mode[name] !== "servings" && styles.toggleTextOff,
+                                                ]}
+                                            >
+                                                Servings
+                                            </Text>
                                         </Pressable>
                                     </View>
 
-                                    {/* Conditionally render input row */}
+                                    {/* Input row */}
                                     {useServ ? (
                                         <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8 }}>
                                             <Text style={{ width: 64, color: "#374151" }}>Servings</Text>
                                             <TextInput
                                                 value={servings[name] ?? ""}
                                                 onChangeText={(t) =>
-                                                    setServings(prev => ({ ...prev, [name]: t.replace(/[^0-9.]/g, "") }))
+                                                    setServings((prev) => ({ ...prev, [name]: t.replace(/[^0-9.]/g, "") }))
                                                 }
                                                 keyboardType="decimal-pad"
-                                                inputMode="decimal"
+                                                // inputMode removed for better Node/Web test stability
                                                 style={{ flex: 1, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff" }}
                                                 placeholder="1"
+                                                testID={`servings-input-${id}`}
                                             />
                                             <Text style={styles.hintText}>
                                                 {facts?.servingGrams
@@ -204,23 +222,27 @@ export default function ReviewScreen() {
                                             <TextInput
                                                 value={grams[name] ?? ""}
                                                 onChangeText={(t) =>
-                                                    setGrams(prev => ({ ...prev, [name]: t.replace(/[^0-9.]/g, "") }))
+                                                    setGrams((prev) => ({ ...prev, [name]: t.replace(/[^0-9.]/g, "") }))
                                                 }
                                                 keyboardType="decimal-pad"
-                                                inputMode="decimal"
+                                                // inputMode removed for better Node/Web test stability
                                                 style={{ flex: 1, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff" }}
                                                 placeholder="100"
+                                                testID={`grams-input-${id}`}
                                             />
                                         </View>
                                     )}
 
-                                    <Text style={styles.line}>Calories: {scaled.calories ?? 0} kcal</Text>
-                                    <Text style={styles.line}>Protein: {scaled.protein ?? 0} g</Text>
-                                    <Text style={styles.line}>Fat: {scaled.fat ?? 0} g</Text>
-                                    <Text style={styles.line}>Carbs: {scaled.carbs ?? 0} g</Text>
-                                    <Text style={styles.line}>Sugars: {scaled.sugars ?? 0} g</Text>
-                                    <Text style={styles.line}>Fiber: {scaled.fiber ?? 0} g</Text>
-                                    <Text style={styles.line}>Sodium: {scaled.sodium ?? 0} mg</Text>
+                                    {/* Make the whole line a single string so tests can match consistently */}
+                                    <Text style={styles.line} testID={`calories-${id}`}>
+                                        {`Calories: ${scaled.calories ?? 0} kcal`}
+                                    </Text>
+                                    <Text style={styles.line}>{`Protein: ${scaled.protein ?? 0} g`}</Text>
+                                    <Text style={styles.line}>{`Fat: ${scaled.fat ?? 0} g`}</Text>
+                                    <Text style={styles.line}>{`Carbs: ${scaled.carbs ?? 0} g`}</Text>
+                                    <Text style={styles.line}>{`Sugars: ${scaled.sugars ?? 0} g`}</Text>
+                                    <Text style={styles.line}>{`Fiber: ${scaled.fiber ?? 0} g`}</Text>
+                                    <Text style={styles.line}>{`Sodium: ${scaled.sodium ?? 0} mg`}</Text>
                                     {facts?.source && <Text style={styles.source}>Source: {facts.source}</Text>}
                                 </View>
                             );
@@ -228,10 +250,10 @@ export default function ReviewScreen() {
                 </ScrollView>
 
                 <View style={[styles.bottom, { paddingBottom: insets.bottom + 10 }]}>
-                    <Pressable onPress={onCancel} style={styles.secondaryBtn}>
+                    <Pressable onPress={onCancel} style={styles.secondaryBtn} testID="btn-cancel">
                         <Text style={styles.secondaryText}>Cancel</Text>
                     </Pressable>
-                    <Pressable onPress={onOK} style={styles.primaryBtn}>
+                    <Pressable onPress={onOK} style={styles.primaryBtn} testID="btn-ok">
                         <Text style={styles.primaryText}>OK</Text>
                     </Pressable>
                 </View>
@@ -253,36 +275,15 @@ const styles = StyleSheet.create({
     line: { fontSize: 14, color: "#111827", marginBottom: 2 },
     source: { fontSize: 12, color: "#6B7280", marginTop: 4 },
 
-    // NEW toggle styles
-    toggleRow: {
-        flexDirection: "row",
-        gap: 8,
-        marginBottom: 8,
-    },
+    toggleRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
     toggleBtn: {
-        flex: 1,
-        borderWidth: 1,
-        borderColor: "#4E70FF",
-        backgroundColor: "#EEF2FF",
-        borderRadius: 10,
-        paddingVertical: 8,
-        alignItems: "center",
+        flex: 1, borderWidth: 1, borderColor: "#4E70FF", backgroundColor: "#EEF2FF",
+        borderRadius: 10, paddingVertical: 8, alignItems: "center",
     },
-    toggleOff: {
-        borderColor: "#E5E7EB",
-        backgroundColor: "#fff",
-    },
-    toggleText: {
-        fontWeight: "700",
-        color: "#2131A8",
-    },
-    toggleTextOff: {
-        color: "#111827",
-        fontWeight: "600",
-    },
-    hintText: {
-        color: "#6B7280",
-    },
+    toggleOff: { borderColor: "#E5E7EB", backgroundColor: "#fff" },
+    toggleText: { fontWeight: "700", color: "#2131A8" },
+    toggleTextOff: { color: "#111827", fontWeight: "600" },
+    hintText: { color: "#6B7280" },
 
     bottom: { paddingHorizontal: 16, gap: 10 },
     secondaryBtn: {
